@@ -4,6 +4,7 @@
 """Transfer inference pipeline for the Omni model."""
 
 import math
+import os
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -125,6 +126,7 @@ def apply_transfer_control_augmentor(
     hint_key: TransferHintKey,
     preset_edge_threshold: PresetEdgeThreshold,
     preset_blur_strength: PresetBlurStrength,
+    use_gpu_blur: bool = False,
 ) -> torch.Tensor:
     """Compute edge/blur transfer controls on the fly from uint8 input frames."""
     from cosmos_framework.data.generator.augmentors.transfer_control_input.control_input import (
@@ -141,10 +143,28 @@ def apply_transfer_control_augmentor(
             preset_strength=preset_edge_threshold,
         )
     elif hint_key == TransferHintKey.BLUR:
+        blur_config = None
+        if use_gpu_blur:
+            from cosmos_framework.data.generator.augmentors.transfer_control_input.blur import (
+                BilateralFilterConfig,
+                BlurCombinationConfig,
+                BlurConfig,
+            )
+
+            blur_config = BlurConfig(
+                blur_combinations=[
+                    BlurCombinationConfig(
+                        blur_types=["bilateral"],
+                        probability=1.0,
+                        bilateral_filter=BilateralFilterConfig(use_random=False, use_cuda=True),
+                    )
+                ]
+            )
         augmentor = AddControlInputBlur(
             input_keys=["input_video"],
             output_keys=["control_input_blur"],
             use_random=False,
+            blur_config=blur_config,
             downup_preset=preset_blur_strength,
         )
     else:
@@ -202,12 +222,15 @@ def load_transfer_control_frames(
         preset_edge_threshold = PresetEdgeThreshold.MEDIUM
         preset_blur_strength = transfer.preset_blur_strength
 
-    log.info(f"Computing {hint_key} control input on the fly")
+    use_gpu_blur = hint_key == TransferHintKey.BLUR and os.environ.get("COSMOS_TRANSFER_BLUR_GPU") == "1"
+    device = "GPU" if use_gpu_blur else "CPU"
+    log.info(f"Computing {hint_key} control input on the fly ({device})")
     return apply_transfer_control_augmentor(
         input_frames,
         hint_key=hint_key,
         preset_edge_threshold=preset_edge_threshold,
         preset_blur_strength=preset_blur_strength,
+        use_gpu_blur=use_gpu_blur,
     )
 
 

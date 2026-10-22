@@ -1640,6 +1640,12 @@ class OmniInference(Inference):
                 config = None
             else:
                 model_dict = setup_args.load_model_config_dict()
+                if os.environ.get("COSMOS_TRANSFER_VISION_ONLY") == "1":
+                    model_config = model_dict["config"]
+                    model_config["sound_gen"] = False
+                    model_config["sound_dim"] = None
+                    model_config["sound_tokenizer"] = None
+                    log.info("Vision-only Transfer mode: sound generation and AVAE tokenizer are disabled")
                 tokenizer_cfg = model_dict["config"]["vlm_config"]["tokenizer"]
                 has_bundled_processor = _checkpoint_has_processor_files(checkpoint_path)
                 if setup_args.vlm_processor_from_checkpoint:
